@@ -2,13 +2,11 @@
 import { useState, useEffect } from "react";
 
 export default function LiveFeed() {
-  // TypeScript Fix: Added <any[]> so it knows what data to expect
   const [requests, setRequests] = useState<any[]>([]);
   const [filteredRequests, setFilteredRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [campusMode, setCampusMode] = useState(false);
 
-  // List of hospitals near BMSIT / Yelahanka area
   const campusHospitals = ["Aster CMI", "Columbia Asia", "Manipal", "Omega", "Proactive", "Navachethana"];
 
   useEffect(() => {
@@ -29,7 +27,6 @@ export default function LiveFeed() {
     fetchRequests();
   }, []);
 
-  // Handle Filtering for Campus Hospitals
   useEffect(() => {
     if (campusMode) {
       const nearCampus = requests.filter(req => 
@@ -59,11 +56,31 @@ export default function LiveFeed() {
     window.open(`https://wa.me/?text=${message}`, '_blank');
   };
 
+  // NEW: Function to delete resolved requests
+  const handleResolve = async (id: string) => {
+    if (!window.confirm("Are you sure this emergency has been resolved? It will be removed from the feed.")) return;
+    
+    try {
+      const res = await fetch(`/api/requests?id=${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (res.ok) {
+        // Instantly remove it from the screen without refreshing the page
+        setRequests(requests.filter((req: any) => req._id !== id));
+        setFilteredRequests(filteredRequests.filter((req: any) => req._id !== id));
+      } else {
+        alert("Failed to resolve request. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error resolving request:", error);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center p-8 bg-slate-50 min-h-screen">
       <h1 className="text-3xl font-bold mb-2 text-red-600">Live Emergencies</h1>
       
-      {/* Campus Toggle Button */}
       <div className="mb-8 flex flex-col items-center">
         <button 
           onClick={() => setCampusMode(!campusMode)}
@@ -104,12 +121,23 @@ export default function LiveFeed() {
                   Contact
                 </button>
               </div>
-              <button 
-                onClick={() => handleShare(req)}
-                className="w-full border-2 border-green-600 text-green-700 py-2 rounded-lg font-bold hover:bg-green-50 flex items-center justify-center gap-2 transition"
-              >
-                <span>📢</span> Share Requirement on WhatsApp
-              </button>
+              
+              {/* Split Action Buttons: Share & Resolve */}
+              <div className="flex gap-3 mt-2">
+                <button 
+                  onClick={() => handleShare(req)}
+                  className="flex-1 border-2 border-green-600 text-green-700 py-2 rounded-lg font-bold hover:bg-green-50 flex items-center justify-center gap-2 transition"
+                >
+                  <span>📢</span> Share
+                </button>
+                <button 
+                  onClick={() => handleResolve(req._id)}
+                  className="flex-1 border-2 border-slate-300 text-slate-500 py-2 rounded-lg font-bold hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center gap-2 transition"
+                >
+                  <span>✅</span> Resolve
+                </button>
+              </div>
+
             </div>
           ))}
         </div>
