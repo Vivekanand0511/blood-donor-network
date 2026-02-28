@@ -1,134 +1,143 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function RequestBlood() {
-  const [formData, setFormData] = useState({ 
-    patientName: "", 
-    bloodGroup: "O+", 
-    hospitalName: "", 
-    phone: "", 
-    urgency: "High" 
-  });
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    patientName: "",
+    bloodGroup: "A+",
+    hospitalName: "",
+    phone: "",
+    urgency: "High"
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // Grab the hospital's GPS coordinates
+    // 1. Check if the browser supports GPS
+    if (!navigator.geolocation) {
+      alert("Location services are not supported by your browser.");
+      setLoading(false);
+      return;
+    }
+
+    // 2. Grab the GPS coordinates
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
+        
+        // 3. Attach coordinates to the data (MongoDB needs Longitude first!)
+        const completeData = {
+          ...formData,
+          location: {
+            type: "Point",
+            coordinates: [longitude, latitude] 
+          }
+        };
 
         try {
           const res = await fetch("/api/requests", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              ...formData, 
-              lat: latitude, 
-              lng: longitude 
-            }),
+            body: JSON.stringify(completeData),
           });
 
-          const result = await res.json();
-          if (result.success) {
-            alert("Emergency request broadcasted successfully!");
-            // Reset the form after successful submission
-            setFormData({ patientName: "", bloodGroup: "O+", hospitalName: "", phone: "", urgency: "High" });
+          if (res.ok) {
+            // Redirect to the live feed immediately after saving
+            router.push("/live-feed"); 
           } else {
-            alert("Error: " + result.error);
+            console.error("Server rejected the data");
           }
-        } catch (err) {
-          alert("Something went wrong connecting to the server.");
+        } catch (error) {
+          console.error("Error submitting request", error);
         } finally {
           setLoading(false);
         }
       },
-      (err) => {
-        alert("Please enable location services so donors know where the hospital is.");
+      (error) => {
+        console.error("Error getting location", error);
+        alert("You must allow location access to broadcast an emergency.");
         setLoading(false);
       }
     );
   };
 
   return (
-    <div className="flex flex-col items-center p-8 bg-slate-50 min-h-screen">
-      <h1 className="text-3xl font-bold mb-2 text-red-600">Emergency Blood Request</h1>
-      <p className="text-slate-600 mb-8 text-center max-w-md">
-        Broadcast an urgent need. Donors in your area will be able to see this request on the live feed.
-      </p>
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md border border-slate-100">
+        <h2 className="text-3xl font-black text-center mb-2 text-slate-800">Broadcast Emergency</h2>
+        <p className="text-center text-slate-500 mb-8">Alert all nearby donors instantly.</p>
 
-      {/* Notice the top border styling to give it an "Emergency" feel */}
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md w-full max-w-md border-t-4 border-red-600">
-        
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Patient Name</label>
-          <input 
-            className="w-full p-2 border rounded focus:ring-2 focus:ring-red-500 outline-none" 
-            placeholder="E.g., Jane Doe" 
-            value={formData.patientName}
-            onChange={(e) => setFormData({...formData, patientName: e.target.value})} 
-            required 
-          />
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Patient Name</label>
+            <input 
+              required 
+              type="text" 
+              className="w-full border-2 border-slate-200 rounded-lg p-3 focus:outline-none focus:border-red-500 transition"
+              onChange={(e) => setFormData({...formData, patientName: e.target.value})}
+            />
+          </div>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Required Blood Group</label>
-          <select 
-            className="w-full p-2 border rounded focus:ring-2 focus:ring-red-500 outline-none"
-            value={formData.bloodGroup}
-            onChange={(e) => setFormData({...formData, bloodGroup: e.target.value})}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Blood Group</label>
+              <select 
+                className="w-full border-2 border-slate-200 rounded-lg p-3 focus:outline-none focus:border-red-500 font-bold"
+                onChange={(e) => setFormData({...formData, bloodGroup: e.target.value})}
+              >
+                {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
+                  <option key={bg} value={bg}>{bg}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Urgency</label>
+              <select 
+                className="w-full border-2 border-slate-200 rounded-lg p-3 focus:outline-none focus:border-red-500 font-bold"
+                onChange={(e) => setFormData({...formData, urgency: e.target.value})}
+              >
+                <option value="Standard">Standard</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Hospital Name & Area</label>
+            <input 
+              required 
+              type="text" 
+              placeholder="e.g., Aster CMI, Hebbal"
+              className="w-full border-2 border-slate-200 rounded-lg p-3 focus:outline-none focus:border-red-500 transition"
+              onChange={(e) => setFormData({...formData, hospitalName: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Attendant's WhatsApp No.</label>
+            <input 
+              required 
+              type="tel" 
+              placeholder="+91..."
+              className="w-full border-2 border-slate-200 rounded-lg p-3 focus:outline-none focus:border-red-500 transition"
+              onChange={(e) => setFormData({...formData, phone: e.target.value})}
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-orange-500 text-white font-bold py-4 rounded-lg hover:bg-orange-600 transition shadow-md disabled:opacity-70 mt-4"
           >
-            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
-              <option key={bg} value={bg}>{bg}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Hospital / Clinic Name</label>
-          <input 
-            className="w-full p-2 border rounded focus:ring-2 focus:ring-red-500 outline-none" 
-            placeholder="E.g., City General Hospital" 
-            value={formData.hospitalName}
-            onChange={(e) => setFormData({...formData, hospitalName: e.target.value})} 
-            required 
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Contact Phone (WhatsApp)</label>
-          <input 
-            className="w-full p-2 border rounded focus:ring-2 focus:ring-red-500 outline-none" 
-            placeholder="+91 XXXXX XXXXX" 
-            value={formData.phone}
-            onChange={(e) => setFormData({...formData, phone: e.target.value})} 
-            required 
-          />
-        </div>
-
-        <div className="mb-6">
-          <label className="block text-sm font-medium mb-1">Urgency Level</label>
-          <select 
-            className="w-full p-2 border rounded focus:ring-2 focus:ring-orange-500 outline-none font-semibold text-orange-700"
-            value={formData.urgency}
-            onChange={(e) => setFormData({...formData, urgency: e.target.value})}
-          >
-            <option value="Normal">Normal (Within 48 Hours)</option>
-            <option value="High">High (Within 24 Hours)</option>
-            <option value="Critical">Critical (Immediate Need!)</option>
-          </select>
-        </div>
-
-        <button 
-          type="submit" 
-          disabled={loading} 
-          className="w-full bg-red-600 text-white p-3 rounded-lg font-bold hover:bg-red-700 transition disabled:bg-red-300"
-        >
-          {loading ? "Broadcasting..." : "Broadcast Emergency"}
-        </button>
-      </form>
+            {loading ? "Getting Location & Broadcasting..." : "Submit Emergency Request"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
